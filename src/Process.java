@@ -33,6 +33,6 @@ public class Process {
     }
 
     public String toString(){
-        return "ID: "+getId()+"\nTempo chegada: "+getTempoChegada()+"\nTempo saída: "+getTempoSaida();
+        return "\nID: "+getId()+" Tempo chegada: "+getTempoChegada()+" Tempo saída: "+getTempoSaida();
     }
 }

@@ -3,33 +3,29 @@
 /// FICOU CONFUSO QUANDO O PROCESSO ENTRA, DE FATO, NO ESCALONADOR
 /// AJUSTAR METODOS DE CHEGADA E SAIDA
 
+// Variaveis para gerar os valores aleatórios
 private static double X0 = 0.8986;
 private static final double parametroA = 0.9866;
 private static final double incrementoC = 0.5663;
 private static final double incrementoM = 1.0000;
 
-
-private static final int TAM_MAX = 10;
+// Variaveis finais
+private static final int QTN_ITERACAO = 10;
+private static final int TAM_MAX = 2;
 private static double TG = 3.0;
-//private static int idProcessos = 0;
-
-
 private static final int  QTDPROCESSOS = 5;
 
-
-
-
 private static int[] servidor = new int[TAM_MAX];
+private static final ArrayList<Double> deltaTempo = new ArrayList<>();
+private static final Map<Integer, Double> escalonador = new HashMap<>();
 
-private static ArrayList<Double> aleatoriosGerados = new ArrayList<>();
-private static ArrayList<Event> listaEventos = new ArrayList<>();
 
-private static  ArrayList<Double> deltaTempo = new ArrayList<>();
+private static final ArrayList<Double> aleatoriosGerados = new ArrayList<>();
+private static final ArrayList<Event> listaEventos = new ArrayList<>();
 
-//private static Queue<Double> valoresGerados = new  LinkedList<>();
-private static ArrayList<Process> fila = new ArrayList<>();
-private static ArrayList<Process> filaPerda = new ArrayList<>();
-private static Map<Integer, Double> escalonador = new HashMap<>();
+private static ArrayList<Process> processes = new ArrayList<>();
+private static ArrayList<Process> filaProcessamento = new ArrayList<>();
+private static final ArrayList<Process> filaPerda = new ArrayList<>();
 
 
 void main() {
@@ -37,14 +33,18 @@ void main() {
     geraProcessos();
 
 
-    for (int i = 100; i >= 0; i--) {
+    for (int i = 0; i <= QTN_ITERACAO; i++) {
         Process process = nextEvent();
 
+        System.out.println("\nITERAÇÃO: "+i);
+        System.out.println("Process: "+process);
         log();
+
 
         if(process == null){
             return;
         }
+
         if (process.getEvent() == Event.IN) {
             eventoChegada(process);
         } else if (process.getEvent() == Event.OUT) {
@@ -69,16 +69,16 @@ private static void geraProcessos() {
         tempo = nextRandom();
 
         // Define event type
-        if (i % 2 == 0) {
-            event = Event.IN;
-        } else {
-            event = Event.OUT;
-        }
+//        if (i % 2 == 0) {
+//            event = Event.IN;
+//        } else {
+//            event = Event.OUT;
+//        }
 
-        process = new Process(tempo, i, event);
+        process = new Process(tempo, i, Event.IN);
 
         // Append in the event list
-        fila.add(process);
+        processes.add(process);
     }
 
 }
@@ -94,22 +94,37 @@ static double nextRandom() {
 // Return the next event
 static Process nextEvent() {
     Process prox = null;
-    double menorTempo = Double.MAX_VALUE;
+    double menorTempoChegada = Double.MAX_VALUE;
+    double menorTempoSaida = Double.MAX_VALUE;
 
-    if(fila.isEmpty()) {
+    if(processes.isEmpty()) {
         return prox;
     }
 
-    for (Process process : fila) {
-        if (process.getTempoChegada() < menorTempo) {
+    for (Process process : processes) {
+        double chegada = process.getTempoChegada();
+        double saida = process.getTempoSaida();
+
+        boolean chegadaValida = !filaProcessamento.contains(process) && !filaPerda.contains(process);
+
+        boolean saidaValida = filaProcessamento.contains(process) && escalonador.containsKey(process.getId());
+
+
+        if(chegadaValida && chegada < menorTempoChegada){
             prox = process;
-            menorTempo = process.getTempoChegada();
-            //fila.remove(process);
+            menorTempoChegada = chegada;
+
+        }
+
+        if(saidaValida && saida < menorTempoSaida){
+            prox = process;
+            menorTempoSaida = saida;
         }
     }
 
-    fila.remove(prox);
-    escalonador.put(prox.getId(), menorTempo);
+    //processes.remove(prox);
+    prox.setEmProcessamento();
+    processes.set(processes.indexOf(prox), prox);
     return prox;
 }
 
@@ -118,14 +133,16 @@ static void eventoChegada(Process process) {
 
     acumalaTempo(process.getTempoChegada());
 
-    log();
+    if (filaProcessamento.size() < TAM_MAX) {
+        filaProcessamento.add(process);
 
-    if (fila.size() < TAM_MAX) {
-        fila.add(process);
-        if (fila.size() <= servidor.length) {
+        if (filaProcessamento.size() <= servidor.length) {
             double saida = tempoSaida();
             escalonador.put(process.getId(), TG + saida);
+
+            process.setEventOut();
             process.setTempoSaida(saida);
+
             listaEventos.add(Event.IN);
         }
 
@@ -143,11 +160,11 @@ static void eventoChegada(Process process) {
 // Exit event
 static void eventSaida(Process process) {
     acumalaTempo(process.getTempoSaida());
+    filaProcessamento.remove(process);
 
-    if(fila.size() > servidor.length) {
-        escalonador.put(process.getId(), TG + tempoSaida());
+    if(filaProcessamento.size() > servidor.length) {
+        escalonador.put(process.getId(), TG + process.getTempoSaida());
         listaEventos.add(Event.OUT);
-        fila.remove(process);
     }
 
 }
@@ -172,7 +189,7 @@ static double tempoChegada() {
 
 
 static String filasStatus(){
-    return "Fila de processos: "+fila.toString() +"\nFila de perda: "+filaPerda.toString()+"\nLista eventos: "+listaEventos.toString();
+    return "Fila de processos: "+ filaProcessamento +"\nFila de perda: "+filaPerda.toString()+"\nLista eventos: "+listaEventos.toString();
 
 }
 

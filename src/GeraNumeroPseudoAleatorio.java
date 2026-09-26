@@ -8,40 +8,50 @@ private static double X0 = 0.8986;
 private static final double parametroA = 0.9866;
 private static final double incrementoC = 0.5663;
 private static final double incrementoM = 1.0000;
+private static final ArrayList<Double> aleatoriosGerados = new ArrayList<>();
 
 // Variaveis finais
-private static final int QTN_ITERACAO = 10;
+private static final int QTD_ITERACAO = 10;
 private static final int TAM_MAX = 2;
 private static double TG = 3.0;
-private static final int  QTDPROCESSOS = 5;
+private static final int QTD_PROCESSOS = 5;
+private static final int QTD_SERVIDORES = 2;
 
-private static int[] servidor = new int[TAM_MAX];
+// Servidores <idServidor, IdProcesso>
+private static Map<Integer, Integer> servidores = new HashMap<>();
 private static final ArrayList<Double> deltaTempo = new ArrayList<>();
 private static final Map<Integer, Double> escalonador = new HashMap<>();
 
-
-private static final ArrayList<Double> aleatoriosGerados = new ArrayList<>();
 private static final ArrayList<Event> listaEventos = new ArrayList<>();
 
+// Processos gerados
 private static ArrayList<Process> processes = new ArrayList<>();
+
+// Fila de processos onde os processos irão entrar pra ir aos servidores
 private static ArrayList<Process> filaProcessamento = new ArrayList<>();
 private static final ArrayList<Process> filaPerda = new ArrayList<>();
+
+private static final ArrayList<Process> filaProcessoSaida = new ArrayList<>();
 
 
 void main() {
 
+    initServidores();
     geraProcessos();
 
+    System.out.println("Processos gerados:");
+    processes.forEach(p -> System.out.println(p));
 
-    for (int i = 0; i <= QTN_ITERACAO; i++) {
+
+    for (int i = 0; i <= QTD_ITERACAO; i++) {
         Process process = nextEvent();
 
-        System.out.println("\nITERAÇÃO: "+i);
-        System.out.println("Process: "+process);
+        System.out.println("\nITERAÇÃO: " + i);
+        System.out.print("Process: " + process);
         log();
 
 
-        if(process == null){
+        if (process == null) {
             return;
         }
 
@@ -51,7 +61,12 @@ void main() {
             eventSaida(process);
         }
 
-        TG += escalonador.get(process.getId());
+        Double proxTempo = escalonador.get(process.getId());
+
+        if (proxTempo != null) {
+            TG = proxTempo;
+        }
+
 
     }
 
@@ -64,9 +79,9 @@ private static void geraProcessos() {
     double tempo;
     Event event;
     Process process;
-    for (int i = 0; i < QTDPROCESSOS; i++) {
+    for (int i = 1; i < QTD_PROCESSOS + 1; i++) {
 
-        tempo = nextRandom();
+        tempo = tempoChegada();
 
         // Define event type
 //        if (i % 2 == 0) {
@@ -94,37 +109,35 @@ static double nextRandom() {
 // Return the next event
 static Process nextEvent() {
     Process prox = null;
-    double menorTempoChegada = Double.MAX_VALUE;
-    double menorTempoSaida = Double.MAX_VALUE;
+    double menorTempo = Double.MAX_VALUE;
 
-    if(processes.isEmpty()) {
-        return prox;
-    }
-
+    // Pega o processo que possui menor tempo de chega ou saída como próximo evento
     for (Process process : processes) {
-        double chegada = process.getTempoChegada();
-        double saida = process.getTempoSaida();
-
-        boolean chegadaValida = !filaProcessamento.contains(process) && !filaPerda.contains(process);
-
-        boolean saidaValida = filaProcessamento.contains(process) && escalonador.containsKey(process.getId());
-
-
-        if(chegadaValida && chegada < menorTempoChegada){
+        if (process.getTempoChegada() < menorTempo) {
             prox = process;
-            menorTempoChegada = chegada;
-
-        }
-
-        if(saidaValida && saida < menorTempoSaida){
-            prox = process;
-            menorTempoSaida = saida;
+            menorTempo = process.getTempoChegada();
+            prox.setEvent(Event.IN);
         }
     }
 
-    //processes.remove(prox);
-    prox.setEmProcessamento();
-    processes.set(processes.indexOf(prox), prox);
+    for (Process process : filaProcessoSaida) {
+        if (process.getTempoSaida() < menorTempo) {
+            prox = process;
+            menorTempo = process.getTempoSaida();
+            prox.setEvent(Event.OUT);
+        }
+    }
+
+    if (prox != null) {
+
+
+        if (prox.getEvent() == Event.IN) {
+            processes.remove(prox);
+        } else {
+            filaProcessoSaida.remove(prox);
+        }
+    }
+
     return prox;
 }
 
@@ -133,46 +146,139 @@ static void eventoChegada(Process process) {
 
     acumalaTempo(process.getTempoChegada());
 
+    int servidorlivre = getServidoresLivres();
+
+
+    // Se fila de processamento ainda tem espaço, adiciona. Senão, perde processo
     if (filaProcessamento.size() < TAM_MAX) {
         filaProcessamento.add(process);
 
-        if (filaProcessamento.size() <= servidor.length) {
+        // se ainda tem servidores livre, adiciona e um servidor e calcula uma saída.
+        if (filaProcessamento.size() <= servidorlivre) {
             double saida = tempoSaida();
+
+            // Calcula uma nova saída para ele
             escalonador.put(process.getId(), TG + saida);
 
-            process.setEventOut();
-            process.setTempoSaida(saida);
+            // Adiciona em um servidor o id do processo atual, ou seja, tona ele ocupado
+            adicionaProcessoAoServidor(process.getId());
 
-            listaEventos.add(Event.IN);
+            // Define o tempo de saída do processo
+            process.setTempoSaida(saida);
+            listaEventos.add(Event.OUT);
+
+            filaProcessoSaida.add(process);
         }
 
     } else {
         filaPerda.add(process);
-        escalonador.put(process.getId(), TG + tempoChegada());
+        //escalonador.put(process.getId(), TG + tempoChegada());
     }
-
-
-    //idProcessos++;
-
 }
 
 
 // Exit event
 static void eventSaida(Process process) {
+
     acumalaTempo(process.getTempoSaida());
+
+    // Processo saiu, apenas remove ele
     filaProcessamento.remove(process);
 
-    if(filaProcessamento.size() > servidor.length) {
-        escalonador.put(process.getId(), TG + process.getTempoSaida());
+
+    // Libera servidor
+    liberaProcessoDoServidor(process.getId());
+
+
+    // Caso ainda tenha processo pra ser escalonado, coloca no servidor
+    if (!filaProcessamento.isEmpty() && getServidoresLivres() > 0) {
+
+        // Para o próximo processa, calcula um tempo de saída e adiciona a um servidor
+        Process nextProcess = filaProcessamento.getFirst();
+        double saida = tempoSaida();
+        process.setTempoSaida(saida);
+
+
+        // pega tempo de saída o próximo processo e adiciona a um servidor
+        escalonador.put(nextProcess.getId(), TG + nextProcess.getTempoSaida());
+
         listaEventos.add(Event.OUT);
     }
 
+}
+
+// Inicializa todos os servidores como vazio (0)
+static void initServidores() {
+    for (int i = 0; i < QTD_SERVIDORES; i++) {
+        servidores.put(i, 0);
+    }
 }
 
 private static void acumalaTempo(double tempoChegada) {
     deltaTempo.add(tempoChegada);
 }
 
+
+// Define o primeiro servidor livre para o processo
+static void adicionaProcessoAoServidor(int idProcesso) {
+
+    for (int i = 0; i < QTD_SERVIDORES; i++) {
+        if (servidores.get(i) == 0) {
+            servidores.put(i, idProcesso);
+            break;
+        }
+    }
+}
+
+
+// Define o servidor que estava como o processo como livre
+static void liberaProcessoDoServidor(int idProcesso) {
+
+    for (int i = 0; i < QTD_SERVIDORES; i++) {
+        if (servidores.get(i) == idProcesso) {
+            servidores.put(i, 0);
+        }
+    }
+
+}
+
+static int getServidoresLivres() {
+    int count = 0;
+
+    for (int i = 0; i < QTD_SERVIDORES; i++) {
+
+        if (servidores.get(i) == 0) {
+            count++;
+        }
+    }
+
+    return count;
+
+}
+
+
+/// METODOS DE LOGS - NÃO PRECISAM DE ALTERACAO AGORA
+static String filasStatus() {
+    return "Fila de processos: " + filaProcessamento + "\nFila de perda: " + filaPerda.toString() + "\nLista eventos: " + listaEventos.toString();
+
+}
+
+static String tempoStatus() {
+    return "TG: " + TG + "\nDelta: " + deltaTempo.toString();
+}
+
+static String escalonadorStatus() {
+    return "Fila escalnador: " + escalonador.toString();
+}
+
+static void log() {
+    System.out.println(filasStatus());
+    System.out.println(tempoStatus());
+    System.out.println(escalonadorStatus());
+}
+
+
+/// APENAS CALCULAM O TEMPO DE CHEGADA E SAÍDA, NÃO PRECISA MUDAR AGORA
 static double tempoSaida() {
     int tempo1 = 4;
     int tempo2 = 5;
@@ -187,38 +293,3 @@ static double tempoChegada() {
     return (tempo2 - tempo1) * nextRandom() + 1;
 }
 
-
-static String filasStatus(){
-    return "Fila de processos: "+ filaProcessamento +"\nFila de perda: "+filaPerda.toString()+"\nLista eventos: "+listaEventos.toString();
-
-}
-
-static void log() {
-    System.out.println(filasStatus());
-    System.out.println(tempoStatus());
-    System.out.println(escalonadorStatus());
-}
-
-static String tempoStatus(){
-    return "TG: "+TG+"\nDelta: "+deltaTempo.toString();
-}
-
-static String escalonadorStatus(){
-    return "Fila escalnador: "+escalonador.toString();
-}
-
-//static void numeroAleatorio(double X0, double parametroA, double incrementoC, double incrementoM) {
-//
-//    double valorGerado;
-//
-//    for (int i = 0; i < 1000; i++) {
-//        valorGerado = (X0*parametroA+incrementoC) % incrementoM;
-//
-//        valoresGerados.add(valorGerado);
-//
-//        X0 = valorGerado;
-//
-//    }
-//    //return (X0*parametroA+incrementoC) % incrementoM;
-//
-//}

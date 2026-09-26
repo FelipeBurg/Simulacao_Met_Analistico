@@ -3,15 +3,12 @@ public class Process {
     private  double tempoSaida = Double.MAX_VALUE;
     private  int id;
     private Event event;
-    private boolean emProcessamento;
 
 
     public Process(double tempoChegada, int id, Event event) {
         this.tempoChegada = tempoChegada;
         this.id = id;
         this.event = event;
-        this.emProcessamento = false;
-
     }
 
     void setTempoSaida(double tempoSaida){
@@ -19,12 +16,8 @@ public class Process {
     }
 
 
-    void setEventOut(){
-        this.event = Event.OUT;
-    }
-
-    void setEmProcessamento(){
-        this.emProcessamento = true;
+    void setEvent(Event event){
+        this.event = event;
     }
 
     double getTempoChegada(){
@@ -39,9 +32,6 @@ public class Process {
         return this.id;
     }
 
-    boolean getEmProcessamento(){
-        return this.emProcessamento;
-    }
 
     Event getEvent(){
         return this.event;

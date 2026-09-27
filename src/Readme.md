@@ -1,5 +1,66 @@
 # Simulação de Fila e Escalonador
 
+## Simulador genérico de redes de filas
+
+O simulador atual carrega uma rede de filas a partir de um arquivo YAML. A quantidade de filas, servidores, capacidades, intervalos de atendimento e rotas não é definida no código.
+
+### Execução
+
+Pré-requisitos: Java 17 ou superior e Maven.
+
+```text
+mvn package
+java -jar target/simulador-rede-filas-1.0.0.jar caminho/para/model.yml
+```
+
+O simulador encerra imediatamente após consumir o 100.000º número pseudoaleatório. O relatório final apresenta o tempo global, saídas para o exterior, perdas por fila, tempo acumulado em cada estado e probabilidade de cada estado.
+
+### Formato do modelo
+
+O arquivo segue o formato do módulo 8:
+
+```yaml
+arrivals:
+        Q1: 2.0
+
+queues:
+        Q1:
+                servers: 1
+                capacity: 0
+                minArrival: 1.0
+                maxArrival: 2.0
+                minService: 2.0
+                maxService: 3.0
+        Q2:
+                servers: 2
+                capacity: 4
+                minService: 3.0
+                maxService: 5.0
+
+network:
+- source: Q1
+        target: Q2
+        probability: 0.2
+- source: Q1
+        target: -1
+        probability: 0.8
+- source: Q2
+        target: -1
+        probability: 1.0
+
+lcg:
+        seed: 1
+        a: 1664525
+        c: 1013904223
+        m: 4294967296
+```
+
+`-1` representa o exterior. Uma chegada é um evento `-1 -> fila`; uma saída é `fila -> -1`; e um roteamento interno é `fila -> fila`. `capacity: 0` representa capacidade infinita e as demais capacidades incluem clientes em espera e em atendimento.
+
+As rotas são avaliadas na ordem em que aparecem no YAML, usando faixas cumulativas. A soma das probabilidades de uma fila não pode exceder `1`; caso fique abaixo de `1`, a probabilidade restante é completada automaticamente como saída para `-1`. O campo opcional `rndnumbers` pode ser usado para reproduzir uma sequência fornecida; quando ela termina, o simulador continua com o LCG configurado.
+
+O arquivo `model (1).yml` é um exemplo de entrada e pode ser executado diretamente pelo comando acima.
+
 Projeto desenvolvido em Java para simular o comportamento de uma fila de atendimento utilizando **números pseudoaleatórios**, processos, servidores e um escalonador de eventos.
 
 O objetivo é simular a entrada de processos em um sistema, verificar a disponibilidade de servidores, encaminhar processos para atendimento ou perda e controlar os eventos de chegada (`IN`) e saída (`OUT`).
@@ -563,20 +624,22 @@ Esse cenário deve ser utilizado para validar `eventSaida()` e a transferência 
 
 # Próximas revisões sugeridas
 
-A implementação atual deve ser revisada principalmente nesta ordem:
+> Esta seção histórica descrevia a implementação antiga. O simulador atual usa `PriorityQueue<EventoSimulacao>` no lugar de `nextEvent()` e `escalonador`.
 
-* [ ] Corrigir e validar a representação dos tempos de chegada.
-* [ ] Garantir que os tempos de chegada sejam acumulados corretamente.
-* [ ] Padronizar eventos utilizando instantes absolutos.
-* [ ] Corrigir e validar o avanço do `TG`.
-* [ ] Validar a seleção do menor evento em `nextEvent()`.
-* [ ] Revisar quando um evento entra no `escalonador`.
-* [ ] Revisar a remoção de eventos já executados do `escalonador`.
-* [ ] Revisar a ocupação e liberação dos servidores.
-* [ ] Revisar a transferência da fila para os servidores após um `OUT`.
-* [ ] Garantir que processos perdidos não sejam processados novamente.
-* [ ] Criar testes pequenos com diferentes quantidades de processos.
-* [ ] Validar manualmente a ordem cronológica dos eventos.
+A implementação atual foi revisada nestes pontos:
+
+* [x] Corrigir e validar a representação dos tempos de chegada.
+* [x] Garantir que os tempos de chegada sejam acumulados corretamente.
+* [x] Padronizar eventos utilizando instantes absolutos.
+* [x] Corrigir e validar o avanço do `TG`.
+* [x] Validar a seleção do menor evento na fila de prioridade.
+* [x] Substituir o `escalonador` por eventos cronológicos com origem e destino.
+* [x] Remover eventos executados com `PriorityQueue.poll()`.
+* [x] Revisar a ocupação e liberação dos servidores.
+* [x] Revisar a transferência da fila para os servidores após um `OUT`.
+* [x] Garantir que processos perdidos não sejam processados novamente.
+* [x] Criar testes básicos para o LCG e a ordem cronológica.
+* [x] Validar manualmente a ordem cronológica durante a execução.
 
 ---
 
